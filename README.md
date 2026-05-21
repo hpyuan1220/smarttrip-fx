@@ -1,6 +1,15 @@
-# SmartTrip FX
+# SmartTrip FX ✈️
 
 為精打細算的旅客設計的 Web App：一鍵生成行程，並精算「不浪費、不匯損」的精準日幣現金換匯量。
+
+![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3-38BDF8?logo=tailwindcss&logoColor=white)
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fhpyuan1220%2Fsmarttrip-fx&env=OPENAI_API_KEY,OPENAI_MODEL,EXCHANGE_API_KEY&envDescription=OpenAI%20%E8%88%87%E5%8C%AF%E7%8E%87%20API%20%E9%87%91%E9%91%B0%EF%BC%88%E5%85%A8%E9%83%A8%E9%81%B8%E5%A1%AB%EF%BC%89&project-name=smarttrip-fx&repository-name=smarttrip-fx)
+
+![SmartTrip FX 儀表板](docs/screenshot.png)
 
 ## 功能
 
@@ -34,6 +43,18 @@ npm run dev
 | `EXCHANGE_API_KEY` | exchangerate.host 金鑰。未設定時使用本機模擬的 30 天歷史資料。 |
 
 > 不需任何金鑰即可完整體驗：行程使用內建關西範本，匯率使用可重現的模擬資料。
+
+## 部署到 Vercel
+
+最簡單：點上方的 **Deploy with Vercel** 按鈕，依指示連結此 repo 並（選填）輸入環境變數即可。
+
+或使用 CLI：
+
+```bash
+npm i -g vercel
+vercel          # 首次會引導登入並連結專案（預覽部署）
+vercel --prod   # 正式部署
+```
 
 ## 架構
 
