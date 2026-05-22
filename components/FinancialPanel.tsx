@@ -16,10 +16,13 @@ function Row({ label, value, hint }: { label: string; value: string; hint?: stri
   );
 }
 
-/** 依匯率量級選擇顯示「每 1」或「每 100」單位。 */
+/** 依匯率量級動態選擇顯示單位（1 / 10 / 100…），讓金額落在易讀範圍。 */
 function rateDisplay(rate: number, spending: CurrencyCode, home: CurrencyCode) {
-  const unit = rate < 1 ? 100 : 1;
-  return `${unit} ${spending} = ${formatMoney(rate * unit, home, 2)}`;
+  let unit = 1;
+  if (rate > 0) {
+    while (rate * unit < 1 && unit < 1e7) unit *= 10;
+  }
+  return `${unit.toLocaleString()} ${spending} = ${formatMoney(rate * unit, home, 2)}`;
 }
 
 export default function FinancialPanel({
