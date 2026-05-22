@@ -1,15 +1,15 @@
 "use client";
 
 import type { Itinerary } from "@/lib/types";
+import { formatMoney } from "@/lib/currency";
 import ItineraryCard from "./ItineraryCard";
 
-const yen = (n: number) => `¥${n.toLocaleString()}`;
-
-function dayTotal(activities: { estimated_cost_jpy: number }[]): number {
-  return activities.reduce((sum, a) => sum + (a.estimated_cost_jpy || 0), 0);
+function dayTotal(activities: { estimated_cost: number }[]): number {
+  return activities.reduce((sum, a) => sum + (a.estimated_cost || 0), 0);
 }
 
 export default function ItineraryTimeline({ itinerary }: { itinerary: Itinerary }) {
+  const currency = itinerary.currency;
   return (
     <div className="space-y-5">
       {itinerary.days.map((day) => (
@@ -23,12 +23,12 @@ export default function ItineraryTimeline({ itinerary }: { itinerary: Itinerary 
               {day.date ? <span className="text-xs text-slate-400">{day.date}</span> : null}
             </div>
             <span className="text-xs font-medium text-slate-500">
-              當日預估 {yen(dayTotal(day.activities))}
+              當日預估 {formatMoney(dayTotal(day.activities), currency)}
             </span>
           </div>
           <div className="space-y-2 border-l-2 border-dashed border-slate-200 pl-3">
             {day.activities.map((activity, i) => (
-              <ItineraryCard key={i} activity={activity} />
+              <ItineraryCard key={i} activity={activity} currency={currency} />
             ))}
           </div>
         </section>

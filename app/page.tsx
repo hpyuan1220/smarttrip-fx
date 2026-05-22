@@ -2,9 +2,16 @@
 
 import { useMemo, useState } from "react";
 import type { GenerateResponse } from "@/lib/types";
-import InputBar from "@/components/InputBar";
+import {
+  DESTINATIONS,
+  defaultCurrencyForDestination,
+  type CurrencyCode,
+} from "@/lib/currency";
+import InputBar, { type InputField } from "@/components/InputBar";
 import ItineraryTimeline from "@/components/ItineraryTimeline";
 import FinancialPanel from "@/components/FinancialPanel";
+
+const CUSTOM = "__custom__";
 
 function addDays(base: Date, days: number): string {
   const d = new Date(base);
@@ -14,28 +21,60 @@ function addDays(base: Date, days: number): string {
 
 export default function DashboardPage() {
   const today = useMemo(() => new Date(), []);
-  const [destination, setDestination] = useState("關西");
+  const [destination, setDestination] = useState(DESTINATIONS[0].label);
+  const [isCustomDestination, setIsCustomDestination] = useState(false);
+  const [spendingCurrency, setSpendingCurrency] = useState<CurrencyCode>(
+    DESTINATIONS[0].defaultCurrency
+  );
+  const [homeCurrency, setHomeCurrency] = useState<CurrencyCode>("TWD");
   const [startDate, setStartDate] = useState(() => addDays(today, 30));
   const [endDate, setEndDate] = useState(() => addDays(today, 36));
-  const [budgetTwd, setBudgetTwd] = useState("40000");
+  const [budget, setBudget] = useState("40000");
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GenerateResponse | null>(null);
 
-  const handleChange = (
-    field: "destination" | "startDate" | "endDate" | "budgetTwd",
-    value: string
-  ) => {
+  const handleChange = (field: InputField, value: string) => {
     setError(null);
-    if (field === "destination") setDestination(value);
-    else if (field === "startDate") setStartDate(value);
-    else if (field === "endDate") setEndDate(value);
-    else if (field === "budgetTwd") setBudgetTwd(value);
+    switch (field) {
+      case "destinationPreset":
+        if (value === CUSTOM) {
+          setIsCustomDestination(true);
+          setDestination("");
+        } else {
+          setIsCustomDestination(false);
+          setDestination(value);
+          setSpendingCurrency(defaultCurrencyForDestination(value));
+        }
+        break;
+      case "destination":
+        setDestination(value);
+        break;
+      case "spendingCurrency":
+        setSpendingCurrency(value as CurrencyCode);
+        break;
+      case "homeCurrency":
+        setHomeCurrency(value as CurrencyCode);
+        break;
+      case "startDate":
+        setStartDate(value);
+        break;
+      case "endDate":
+        setEndDate(value);
+        break;
+      case "budget":
+        setBudget(value);
+        break;
+    }
   };
 
   const handleSubmit = async () => {
     setError(null);
+    if (!destination.trim()) {
+      setError("請選擇或輸入旅遊目的地。");
+      return;
+    }
     if (!startDate || !endDate) {
       setError("請選擇出發與回程日期。");
       return;
@@ -44,9 +83,9 @@ export default function DashboardPage() {
       setError("回程日期不可早於出發日期。");
       return;
     }
-    const budget = Number(budgetTwd);
-    if (!budget || budget <= 0) {
-      setError("請輸入有效的台幣預算總額。");
+    const budgetNum = Number(budget);
+    if (!budgetNum || budgetNum <= 0) {
+      setError("請輸入有效的預算總額。");
       return;
     }
 
@@ -55,7 +94,14 @@ export default function DashboardPage() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ destination, startDate, endDate, budgetTwd: budget }),
+        body: JSON.stringify({
+          destination,
+          startDate,
+          endDate,
+          budget: budgetNum,
+          homeCurrency,
+          spendingCurrency,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "產生行程失敗");
@@ -78,16 +124,19 @@ export default function DashboardPage() {
           </h1>
         </div>
         <p className="mt-1 text-sm text-slate-500">
-          一鍵生成行程，精算「不浪費、不匯損」的精準日幣現金換匯量。
+          一鍵生成行程，精算「不浪費、不匯損」的精準現金換匯量（支援多目的地與多幣別）。
         </p>
       </header>
 
       {/* 輸入列 */}
       <InputBar
         destination={destination}
+        isCustomDestination={isCustomDestination}
+        spendingCurrency={spendingCurrency}
+        homeCurrency={homeCurrency}
         startDate={startDate}
         endDate={endDate}
-        budgetTwd={budgetTwd}
+        budget={budget}
         loading={loading}
         onChange={handleChange}
         onSubmit={handleSubmit}
@@ -100,10 +149,7 @@ export default function DashboardPage() {
       ) : null}
 
       {/* 主內容區 */}
-      {!result && !loading ? (
-        <EmptyState />
-      ) : null}
-
+      {!result && !loading ? <EmptyState /> : null}
       {loading && !result ? <LoadingState /> : null}
 
       {result ? (
@@ -127,7 +173,8 @@ export default function DashboardPage() {
               <FinancialPanel
                 finance={result.finance}
                 fx={result.fx}
-                budgetTwd={result.budgetTwd}
+                budget={result.budget}
+                homeCurrency={result.homeCurrency}
               />
             </div>
           </div>
@@ -144,9 +191,9 @@ export default function DashboardPage() {
 function EmptyState() {
   return (
     <div className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-white/60 p-10 text-center">
-      <div className="text-3xl">🗾</div>
+      <div className="text-3xl">🗺️</div>
       <p className="mt-2 text-sm font-medium text-slate-600">
-        輸入目的地、日期與預算，按「一鍵生成行程」開始規劃。
+        選擇目的地、幣別、日期與預算，按「一鍵生成行程」開始規劃。
       </p>
       <p className="mt-1 text-xs text-slate-400">
         系統會自動標註每筆花費的支付方式，並算出最精準的現金換匯量。
