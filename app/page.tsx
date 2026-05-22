@@ -14,6 +14,7 @@ import InputBar, { type InputField } from "@/components/InputBar";
 import TierSelector from "@/components/TierSelector";
 import ItineraryTimeline from "@/components/ItineraryTimeline";
 import FinancialPanel from "@/components/FinancialPanel";
+import TravelPanel from "@/components/TravelPanel";
 
 const CUSTOM = "__custom__";
 
@@ -205,12 +206,24 @@ export default function DashboardPage() {
               <ItineraryTimeline itinerary={selectedPlan.itinerary} />
             </div>
             <div className="lg:col-span-1">
-              <div className="lg:sticky lg:top-6">
+              <div className="space-y-4 lg:sticky lg:top-6">
                 <FinancialPanel
                   finance={selectedPlan.finance}
                   fx={result.fx}
                   budget={selectedPlan.budgetHome}
                   homeCurrency={result.homeCurrency}
+                />
+                <TravelPanel
+                  destination={result.destination}
+                  startDate={result.startDate}
+                  endDate={result.endDate}
+                  headcount={result.context.headcount}
+                  tier={selectedPlan.tier}
+                  spendingCurrency={result.spendingCurrency}
+                  homeCurrency={result.homeCurrency}
+                  rate={result.fx.currentRate}
+                  activitiesTotalSpending={selectedPlan.finance.totalSpending}
+                  budgetHome={selectedPlan.budgetHome}
                 />
               </div>
             </div>

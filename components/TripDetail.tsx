@@ -13,6 +13,7 @@ import {
   setStory,
 } from "@/lib/storage";
 import ItineraryTimeline from "./ItineraryTimeline";
+import TravelPanel from "./TravelPanel";
 
 type Tab = "itinerary" | "expenses" | "review" | "story";
 
@@ -83,7 +84,22 @@ export default function TripDetail({
       </div>
 
       <div className="mt-4">
-        {tab === "itinerary" ? <ItineraryTimeline itinerary={trip.itinerary} /> : null}
+        {tab === "itinerary" ? (
+          <div className="space-y-4">
+            <TravelPanel
+              destination={trip.destination}
+              startDate={trip.startDate}
+              endDate={trip.endDate}
+              headcount={trip.context.headcount}
+              tier={trip.tier}
+              spendingCurrency={trip.spendingCurrency}
+              homeCurrency={trip.homeCurrency}
+              rate={trip.fxSnapshot.currentRate}
+              activitiesTotalSpending={trip.finance.totalSpending}
+            />
+            <ItineraryTimeline itinerary={trip.itinerary} />
+          </div>
+        ) : null}
         {tab === "expenses" ? <ExpenseTab trip={trip} onChanged={onChanged} /> : null}
         {tab === "review" ? <ReviewTab trip={trip} onChanged={onChanged} /> : null}
         {tab === "story" ? <StoryTab trip={trip} onChanged={onChanged} /> : null}

@@ -10,6 +10,7 @@
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fhpyuan1220%2Fsmarttrip-fx&env=OPENAI_API_KEY,OPENAI_MODEL,EXCHANGE_API_KEY&envDescription=OpenAI%20%E8%88%87%E5%8C%AF%E7%8E%87%20API%20%E9%87%91%E9%91%B0%EF%BC%88%E5%85%A8%E9%83%A8%E9%81%B8%E5%A1%AB%EF%BC%89&project-name=smarttrip-fx&repository-name=smarttrip-fx)
 
 ![SmartTrip FX 規劃畫面](docs/screenshot.png)
+![SmartTrip FX 機票住宿估算與搜尋](docs/screenshot-travel.png)
 ![SmartTrip FX 我的行程](docs/screenshot-trips.png)
 
 ## 功能
@@ -20,6 +21,7 @@
 - **多目的地 + 30+ 幣別**：內建關西 / 東京 / 首爾 / 曼谷 / 巴黎 / 倫敦 / 杜拜…等預設(也可自訂)；消費幣別支援 30+ 種常見旅遊貨幣，本國幣別預設 TWD。選目的地自動帶入預設幣別，可手動覆蓋。
 - **行程時間軸**：每日卡片標註景點、預估花費(依消費幣別格式化)與支付標籤(刷卡 / 現金)。
 - **財務面板**：大字顯示「建議換匯量」、FX 換匯紅綠燈（STRONG_BUY / BUY / HOLD）與文字建議。
+- **機票 + 住宿**：依級距 / 地區 / 人數 / 晚數粗估機票與住宿成本，算出「行前預估總計」(當地行程 + 機票 + 住宿)並對比預算；附 Google Flights / Skyscanner / Booking.com / Agoda 一鍵搜尋連結(自動帶入目的地與日期)。機票住宿多為刷卡 / 預付，不計入現金換匯。
 
 ### 紀錄與回顧（資料存在本機瀏覽器，免登入）
 - **SaveTrip**：把選定的方案存進「我的行程」。
@@ -78,7 +80,7 @@ app/
   api/generate/route.ts     Serverless Function：匯率 + 三級距行程 + 財務
 components/
   NavBar / InputBar / TierSelector
-  ItineraryTimeline / ItineraryCard / FinancialPanel / FxLight
+  ItineraryTimeline / ItineraryCard / FinancialPanel / FxLight / TravelPanel
   TripDetail            行程詳情：行程 / 開支紀錄 / 旅程回顧 / 心情故事
 lib/
   types.ts      共用型別
@@ -87,6 +89,7 @@ lib/
   openai.ts     OpenAI 行程生成（嚴格 json_object）＋ 多目的地示範行程 + 級距縮放
   finance.ts    財務模組：cash_only × 1.1，依幣別進位
   fx.ts         匯率模組：任意貨幣對 30 天歷史、MA30、燈號
+  travel.ts     機票 / 住宿粗估 + 訂票搜尋連結
   storage.ts    本機儲存（localStorage）：行程 / 開支 / 回顧 / 故事 CRUD
 ```
 
