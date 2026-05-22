@@ -7,6 +7,8 @@ export type { CurrencyCode } from "./currency";
 
 export type PaymentMethod = "cash_only" | "card_acceptable";
 
+export type TierKey = "low" | "mid" | "high";
+
 export interface ActivityItem {
   time: string; // "HH:MM"
   name: string; // 景點 / 行程名
@@ -58,20 +60,98 @@ export interface FinanceSummary {
   estimatedHomeForCash: number; // 換這些現金約需多少本國幣別
 }
 
+// 規劃情境（心情 / 主題 / 同行 / 人數 / 預算範圍）
+export interface TripContext {
+  mood?: string;
+  theme?: string;
+  companions?: string;
+  headcount: number;
+  budgetMin: number; // 本國幣別
+  budgetMax: number; // 本國幣別
+}
+
+export interface TierPlan {
+  tier: TierKey;
+  label: string; // 輕簡 / 標準 / 盡興
+  tagline: string;
+  budgetHome: number; // 此級距對應的本國幣別預算
+  itinerary: Itinerary;
+  finance: FinanceSummary;
+}
+
 export interface GenerateRequest {
   destination: string;
   startDate: string; // "YYYY-MM-DD"
   endDate: string; // "YYYY-MM-DD"
-  budget: number; // 本國幣別預算總額
   homeCurrency: CurrencyCode;
   spendingCurrency: CurrencyCode;
+  budgetMin: number; // 本國幣別
+  budgetMax: number; // 本國幣別
+  mood?: string;
+  theme?: string;
+  companions?: string;
+  headcount: number;
 }
 
 export interface GenerateResponse {
+  tiers: TierPlan[];
+  fx: FxAnalysis;
+  context: TripContext;
+  homeCurrency: CurrencyCode;
+  spendingCurrency: CurrencyCode;
+  destination: string;
+  startDate: string;
+  endDate: string;
+  generatedBy: "openai" | "sample";
+}
+
+// ---------------- 已儲存的行程（localStorage） ----------------
+
+export interface Expense {
+  id: string;
+  date: string; // "YYYY-MM-DD"
+  name: string;
+  amount: number; // 消費幣別
+  method: PaymentMethod;
+  note?: string;
+  createdAt: number;
+}
+
+export interface TripReview {
+  rating: number; // 1..5
+  wentWell?: string;
+  overUnder?: string;
+  notes?: string;
+  updatedAt: number;
+}
+
+export interface MoodStory {
+  mood?: string;
+  title?: string;
+  body?: string;
+  updatedAt: number;
+}
+
+export interface SavedTrip {
+  id: string;
+  createdAt: number;
+  destination: string;
+  startDate: string;
+  endDate: string;
+  homeCurrency: CurrencyCode;
+  spendingCurrency: CurrencyCode;
+  context: TripContext;
+  tier: TierKey;
+  tierLabel: string;
   itinerary: Itinerary;
   finance: FinanceSummary;
-  fx: FxAnalysis;
-  budget: number;
-  homeCurrency: CurrencyCode;
-  generatedBy: "openai" | "sample";
+  fxSnapshot: {
+    signal: FxSignal;
+    currentRate: number;
+    ma30: number;
+    deviationPct: number;
+  };
+  expenses: Expense[];
+  review?: TripReview;
+  story?: MoodStory;
 }

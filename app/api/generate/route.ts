@@ -1,23 +1,44 @@
 // POST /api/generate
 //
 // 流程：
-//   1. 接收 { destination, startDate, endDate, budget, homeCurrency, spendingCurrency }。
+//   1. 接收 { destination, startDate, endDate, homeCurrency, spendingCurrency,
+//             budgetMin, budgetMax, mood, theme, companions, headcount }。
 //   2. 取得該貨幣對的匯率分析（今日匯率 / MA30 / 燈號）。
-//   3. 將本國幣別預算換算為消費幣別，呼叫 OpenAI 生成帶支付標籤的行程；無金鑰則用示範行程。
-//   4. 用財務模組計算「建議換匯量」（cash_only 總和 × 1.1，依幣別進位）。
-//   5. 回傳整合結果給前端。
+//   3. 由預算範圍推算 Low / Mid / High 三個級距，各自生成行程與財務。
+//   4. 回傳 tiers[] 給前端挑選。
 
 import { NextResponse } from "next/server";
-import type { GenerateRequest, GenerateResponse, Itinerary } from "@/lib/types";
+import type {
+  GenerateRequest,
+  GenerateResponse,
+  Itinerary,
+  TierKey,
+  TierPlan,
+  TripContext,
+} from "@/lib/types";
 import { getFxAnalysis } from "@/lib/fx";
 import { computeFinance } from "@/lib/finance";
-import { generateItineraryWithOpenAI, buildSampleItinerary } from "@/lib/openai";
+import {
+  generateItineraryWithOpenAI,
+  buildSampleItinerary,
+  scaleItineraryToTarget,
+  type GenContext,
+} from "@/lib/openai";
 import {
   CURRENCIES,
   baseRate,
   defaultCurrencyForDestination,
   type CurrencyCode,
 } from "@/lib/currency";
+import {
+  MOODS,
+  THEMES,
+  COMPANIONS,
+  TIERS,
+  TIER_RICHNESS,
+  tierBudgets,
+  optionLabel,
+} from "@/lib/planning";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,7 +50,6 @@ function isCurrency(code: unknown): code is CurrencyCode {
   return typeof code === "string" && code in CURRENCIES;
 }
 
-/** 計算兩個日期之間的天數（含頭尾）。無效時回傳預設值。 */
 function diffDaysInclusive(start: string, end: string, fallback = 7): number {
   const s = new Date(start);
   const e = new Date(end);
@@ -39,7 +59,6 @@ function diffDaysInclusive(start: string, end: string, fallback = 7): number {
   return Math.min(MAX_DAYS, Math.max(MIN_DAYS, days));
 }
 
-/** 為行程每天填上實際日期。 */
 function applyDates(itinerary: Itinerary, startDate: string): Itinerary {
   const start = new Date(startDate);
   if (isNaN(start.getTime())) return itinerary;
@@ -64,57 +83,101 @@ export async function POST(req: Request) {
   const destination = (body.destination || "關西").toString().trim() || "關西";
   const startDate = (body.startDate || "").toString();
   const endDate = (body.endDate || "").toString();
-  const budget = Math.max(0, Math.round(Number(body.budget) || 0));
   const homeCurrency: CurrencyCode = isCurrency(body.homeCurrency) ? body.homeCurrency : "TWD";
   const spendingCurrency: CurrencyCode = isCurrency(body.spendingCurrency)
     ? body.spendingCurrency
     : defaultCurrencyForDestination(destination);
 
+  const budgetMin = Math.max(0, Math.round(Number(body.budgetMin) || 0));
+  const budgetMaxRaw = Math.max(0, Math.round(Number(body.budgetMax) || 0));
+  const budgetMax = Math.max(budgetMin, budgetMaxRaw);
+  const headcount = Math.max(1, Math.round(Number(body.headcount) || 1));
+  const mood = body.mood ? String(body.mood) : undefined;
+  const theme = body.theme ? String(body.theme) : undefined;
+  const companions = body.companions ? String(body.companions) : undefined;
+
   if (!startDate || !endDate) {
     return NextResponse.json({ error: "請提供出發與回程日期" }, { status: 400 });
   }
-  if (budget <= 0) {
-    return NextResponse.json({ error: "請提供有效的預算總額" }, { status: 400 });
+  if (budgetMin <= 0 || budgetMax <= 0) {
+    return NextResponse.json({ error: "請提供有效的預算範圍" }, { status: 400 });
   }
 
   const days = diffDaysInclusive(startDate, endDate, 7);
+  const budgets = tierBudgets(budgetMin, budgetMax);
+
+  // 將選項 id 轉為人類可讀標籤，供 AI prompt 使用
+  const genContext: GenContext = {
+    mood: optionLabel(MOODS, mood),
+    theme: optionLabel(THEMES, theme),
+    companions: optionLabel(COMPANIONS, companions),
+    headcount,
+  };
 
   try {
-    // 1) 匯率分析（同時拿到換算用的今日匯率：1 spending = ? home）
     const fx = await getFxAnalysis(spendingCurrency, homeCurrency);
-
-    // 2) 將本國幣別預算換算為消費幣別，作為 AI 規劃花費的上限參考
     const rate = fx.currentRate > 0 ? fx.currentRate : baseRate(spendingCurrency, homeCurrency);
-    const budgetSpending = rate > 0 ? budget / rate : budget;
 
-    // 3) 生成行程（OpenAI；失敗則退回示範行程）
-    let itinerary: Itinerary;
     let generatedBy: GenerateResponse["generatedBy"] = "openai";
+    const tierItineraries: Record<TierKey, Itinerary> = {} as Record<TierKey, Itinerary>;
+
     try {
-      itinerary = await generateItineraryWithOpenAI({
-        destination,
-        days,
-        startDate,
-        budgetSpending,
-        currency: spendingCurrency,
-      });
-      if (!itinerary.days.length) throw new Error("EMPTY_ITINERARY");
+      // OpenAI：三個級距各生成一次（任何一次失敗即整體退回示範行程）
+      await Promise.all(
+        TIERS.map(async ({ key }) => {
+          const budgetSpending = rate > 0 ? budgets[key] / rate : budgets[key];
+          const it = await generateItineraryWithOpenAI({
+            destination,
+            days,
+            startDate,
+            budgetSpending,
+            currency: spendingCurrency,
+            context: genContext,
+          });
+          if (!it.days.length) throw new Error("EMPTY_ITINERARY");
+          tierItineraries[key] = it;
+        })
+      );
     } catch {
-      itinerary = buildSampleItinerary(destination, days, spendingCurrency);
+      // 示範行程：建立一份基底，依「豐富度倍率」差異化，再以各級距預算為上限
       generatedBy = "sample";
+      const base = buildSampleItinerary(destination, days, spendingCurrency);
+      const baseTotal = base.days.reduce(
+        (s, d) => s + d.activities.reduce((x, a) => x + (a.estimated_cost || 0), 0),
+        0
+      );
+      for (const { key } of TIERS) {
+        const budgetCap = (rate > 0 ? budgets[key] / rate : budgets[key]) * 0.9;
+        const desired = baseTotal * TIER_RICHNESS[key];
+        const finalTarget = Math.min(desired, budgetCap);
+        tierItineraries[key] = scaleItineraryToTarget(base, finalTarget);
+      }
     }
 
-    itinerary = applyDates(itinerary, startDate);
+    const tiers: TierPlan[] = TIERS.map(({ key, label, tagline }) => {
+      const itinerary = applyDates(tierItineraries[key], startDate);
+      const finance = computeFinance(itinerary, spendingCurrency, homeCurrency, fx.currentRate);
+      return { tier: key, label, tagline, budgetHome: budgets[key], itinerary, finance };
+    });
 
-    // 4) 財務計算（cash_only × 1.1，依幣別進位）
-    const finance = computeFinance(itinerary, spendingCurrency, homeCurrency, fx.currentRate);
+    const context: TripContext = {
+      mood,
+      theme,
+      companions,
+      headcount,
+      budgetMin,
+      budgetMax,
+    };
 
     const response: GenerateResponse = {
-      itinerary,
-      finance,
+      tiers,
       fx,
-      budget,
+      context,
       homeCurrency,
+      spendingCurrency,
+      destination,
+      startDate,
+      endDate,
       generatedBy,
     };
 

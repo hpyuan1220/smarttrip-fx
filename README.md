@@ -1,6 +1,6 @@
 # SmartTrip FX ✈️
 
-為精打細算的旅客設計的 Web App：一鍵生成行程，並精算「不浪費、不匯損」的精準日幣現金換匯量。
+一個**簡單、快速的個人旅程規劃器**，給「想臨時逃離一下」的人。挑個心情與預算範圍，一鍵生成 **Low / Mid / High** 三種方案，並精算「不浪費、不匯損」的精準現金換匯量；還能把行程存下來、記帳、寫回顧與心情故事。
 
 ![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js)
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
@@ -9,15 +9,26 @@
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fhpyuan1220%2Fsmarttrip-fx&env=OPENAI_API_KEY,OPENAI_MODEL,EXCHANGE_API_KEY&envDescription=OpenAI%20%E8%88%87%E5%8C%AF%E7%8E%87%20API%20%E9%87%91%E9%91%B0%EF%BC%88%E5%85%A8%E9%83%A8%E9%81%B8%E5%A1%AB%EF%BC%89&project-name=smarttrip-fx&repository-name=smarttrip-fx)
 
-![SmartTrip FX 儀表板](docs/screenshot.png)
+![SmartTrip FX 規劃畫面](docs/screenshot.png)
+![SmartTrip FX 我的行程](docs/screenshot-trips.png)
 
 ## 功能
 
-- **儀表板**：選擇目的地、消費幣別、本國幣別、出發 / 回程日期與預算總額。
-- **多目的地 + 多幣別**：內建關西 / 東京 / 首爾 / 曼谷 / 巴黎 / 紐約等預設(也可自訂目的地)；消費幣別支援 JPY / KRW / THB / EUR / USD，本國幣別預設 TWD。選目的地時自動帶入預設消費幣別，可手動覆蓋。
-- **行程時間軸（左側）**：每日行程卡片標註景點名、預估花費(依消費幣別格式化)與支付標籤(刷卡 / 現金)。
-- **財務面板（右側）**：大字顯示「建議換匯量」、FX 換匯紅綠燈（STRONG_BUY / BUY / HOLD）與文字建議。
-- **AI 行程生成**：`/api/generate` 以嚴格 `json_object` 提示詞呼叫 OpenAI，回傳帶 `payment_method` 標籤、金額為消費幣別的行程；無金鑰時依目的地挑選示範行程(找不到則用通用模板並換算金額)。
+### 規劃
+- **依心情規劃**：選擇**心情、主題、同行成分、人數**與**預算範圍**，量身生成行程。
+- **Low / Mid / High 三方案**：由預算範圍自動產生輕簡 / 標準 / 盡興三種級距，各自有不同花費與建議換匯量，一鍵切換比較。
+- **多目的地 + 30+ 幣別**：內建關西 / 東京 / 首爾 / 曼谷 / 巴黎 / 倫敦 / 杜拜…等預設(也可自訂)；消費幣別支援 30+ 種常見旅遊貨幣，本國幣別預設 TWD。選目的地自動帶入預設幣別，可手動覆蓋。
+- **行程時間軸**：每日卡片標註景點、預估花費(依消費幣別格式化)與支付標籤(刷卡 / 現金)。
+- **財務面板**：大字顯示「建議換匯量」、FX 換匯紅綠燈（STRONG_BUY / BUY / HOLD）與文字建議。
+
+### 紀錄與回顧（資料存在本機瀏覽器，免登入）
+- **SaveTrip**：把選定的方案存進「我的行程」。
+- **開支紀錄**：旅途中隨手記帳(現金 / 刷卡)，即時對比**計畫 vs 實際**、超支 / 結餘、建議現金 vs 實際現金。
+- **旅程回顧**：星等評分 + 心得(最棒的部分、預算心得、備註)。
+- **心情故事**：用心情標籤 + 標題 + 內文，記下這趟說走就走的心情。
+
+### 引擎
+- **AI 行程生成**：`/api/generate` 以嚴格 `json_object` 提示詞呼叫 OpenAI，依心情/主題/同行/人數/預算生成帶 `payment_method` 標籤、金額為消費幣別的行程；無金鑰時依目的地挑選示範行程並按級距差異化。
 - **財務演算法**：統計 `cash_only` 項目總和 × 1.1（10% 預備金），並依幣別進位至合理提領單位(JPY=1000、KRW=10000、THB=100、USD=20、EUR=10)。
 - **匯率燈號**：讀取 30 天「消費幣別 / 本國幣別」歷史(透過美元做交叉匯率)，與 MA30 比較產生燈號（可串接真實 API 或使用模擬資料）。
 
@@ -61,17 +72,22 @@ vercel --prod   # 正式部署
 
 ```
 app/
-  page.tsx                  儀表板（前端主畫面）
+  page.tsx                  規劃主畫面（輸入 + 三級距 + 行程 + 財務 + 儲存）
+  trips/page.tsx            我的行程（清單 + 詳情）
   layout.tsx / globals.css
-  api/generate/route.ts     Serverless Function：整合行程 + 匯率 + 財務
+  api/generate/route.ts     Serverless Function：匯率 + 三級距行程 + 財務
 components/
-  InputBar / ItineraryTimeline / ItineraryCard / FinancialPanel / FxLight
+  NavBar / InputBar / TierSelector
+  ItineraryTimeline / ItineraryCard / FinancialPanel / FxLight
+  TripDetail            行程詳情：行程 / 開支紀錄 / 旅程回顧 / 心情故事
 lib/
   types.ts      共用型別
   currency.ts   幣別 / 目的地設定：符號、locale、進位單位、交叉匯率、目的地對照
-  openai.ts     OpenAI 行程生成（嚴格 json_object）＋ 多目的地示範行程
+  planning.ts   心情 / 主題 / 同行選項、級距與豐富度倍率
+  openai.ts     OpenAI 行程生成（嚴格 json_object）＋ 多目的地示範行程 + 級距縮放
   finance.ts    財務模組：cash_only × 1.1，依幣別進位
   fx.ts         匯率模組：任意貨幣對 30 天歷史、MA30、燈號
+  storage.ts    本機儲存（localStorage）：行程 / 開支 / 回顧 / 故事 CRUD
 ```
 
 ## 燈號邏輯

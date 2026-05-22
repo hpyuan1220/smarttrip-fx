@@ -46,16 +46,33 @@ function buildSystemPrompt(currency: CurrencyCode): string {
 - 金額務實合理，符合該目的地與幣別的物價水準。`;
 }
 
+export interface GenContext {
+  mood?: string;
+  theme?: string;
+  companions?: string;
+  headcount?: number;
+}
+
+function contextLine(ctx: GenContext): string {
+  const parts: string[] = [];
+  if (ctx.mood) parts.push(`心情：${ctx.mood}`);
+  if (ctx.theme) parts.push(`主題：${ctx.theme}`);
+  if (ctx.companions) parts.push(`同行：${ctx.companions}`);
+  if (ctx.headcount && ctx.headcount > 0) parts.push(`人數：${ctx.headcount} 人`);
+  return parts.length ? `\n本次旅程偏好 → ${parts.join("、")}（請讓行程風格貼合這些偏好）。` : "";
+}
+
 function buildUserPrompt(params: {
   destination: string;
   days: number;
   startDate: string;
   budgetSpending: number;
   currency: CurrencyCode;
+  context: GenContext;
 }): string {
   return `請規劃一份「${params.destination}」的 ${params.days} 天自由行行程。
 出發日期：${params.startDate}
-本次可用預算約 ${Math.round(params.budgetSpending).toLocaleString()} ${params.currency}（請讓總花費貼近此金額但不超過）。
+本次可用預算約 ${Math.round(params.budgetSpending).toLocaleString()} ${params.currency}（請讓總花費貼近此金額但不超過）。${contextLine(params.context)}
 請依系統指示的 JSON Schema 回傳，所有金額以 ${params.currency} 計，並為每個行程標註正確的 payment_method。`;
 }
 
@@ -102,6 +119,7 @@ export async function generateItineraryWithOpenAI(params: {
   startDate: string;
   budgetSpending: number;
   currency: CurrencyCode;
+  context: GenContext;
 }): Promise<Itinerary> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("MISSING_OPENAI_KEY");
@@ -417,4 +435,39 @@ export function buildSampleItinerary(
     dayPlans.push(templateToDay(tpl, i + 1, mapCost));
   }
   return { destination: destination || "自訂目的地", currency, days: dayPlans };
+}
+
+/** 將當地金額做合理進位（依量級）。 */
+function niceRoundLocal(v: number): number {
+  if (v <= 0) return 0;
+  if (v >= 1000) return Math.round(v / 100) * 100;
+  if (v >= 100) return Math.round(v / 10) * 10;
+  if (v >= 10) return Math.round(v);
+  return Math.max(1, Math.round(v));
+}
+
+/**
+ * 將示範行程的花費等比縮放，使總額貼近目標花費（消費幣別），
+ * 用來產生 Low / Mid / High 三種級距的差異。
+ */
+export function scaleItineraryToTarget(itinerary: Itinerary, targetSpending: number): Itinerary {
+  const baseTotal = itinerary.days.reduce(
+    (sum, d) => sum + d.activities.reduce((s, a) => s + (a.estimated_cost || 0), 0),
+    0
+  );
+  if (baseTotal <= 0 || targetSpending <= 0) return itinerary;
+
+  let factor = targetSpending / baseTotal;
+  factor = Math.max(0.2, Math.min(10, factor));
+
+  return {
+    ...itinerary,
+    days: itinerary.days.map((d) => ({
+      ...d,
+      activities: d.activities.map((a) => ({
+        ...a,
+        estimated_cost: niceRoundLocal((a.estimated_cost || 0) * factor),
+      })),
+    })),
+  };
 }

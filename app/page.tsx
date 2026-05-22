@@ -1,13 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { GenerateResponse } from "@/lib/types";
+import { useRouter } from "next/navigation";
+import type { GenerateResponse, TierKey } from "@/lib/types";
 import {
   DESTINATIONS,
   defaultCurrencyForDestination,
   type CurrencyCode,
 } from "@/lib/currency";
+import { addTrip, buildSavedTrip } from "@/lib/storage";
+import NavBar from "@/components/NavBar";
 import InputBar, { type InputField } from "@/components/InputBar";
+import TierSelector from "@/components/TierSelector";
 import ItineraryTimeline from "@/components/ItineraryTimeline";
 import FinancialPanel from "@/components/FinancialPanel";
 
@@ -20,20 +24,29 @@ function addDays(base: Date, days: number): string {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const today = useMemo(() => new Date(), []);
+
   const [destination, setDestination] = useState(DESTINATIONS[0].label);
   const [isCustomDestination, setIsCustomDestination] = useState(false);
   const [spendingCurrency, setSpendingCurrency] = useState<CurrencyCode>(
     DESTINATIONS[0].defaultCurrency
   );
   const [homeCurrency, setHomeCurrency] = useState<CurrencyCode>("TWD");
-  const [startDate, setStartDate] = useState(() => addDays(today, 30));
-  const [endDate, setEndDate] = useState(() => addDays(today, 36));
-  const [budget, setBudget] = useState("40000");
+  const [startDate, setStartDate] = useState(() => addDays(today, 14));
+  const [endDate, setEndDate] = useState(() => addDays(today, 17));
+  const [budgetMin, setBudgetMin] = useState("20000");
+  const [budgetMax, setBudgetMax] = useState("60000");
+  const [mood, setMood] = useState("escape");
+  const [theme, setTheme] = useState("");
+  const [companions, setCompanions] = useState("");
+  const [headcount, setHeadcount] = useState("1");
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<GenerateResponse | null>(null);
+  const [selectedTier, setSelectedTier] = useState<TierKey>("mid");
+  const [savedId, setSavedId] = useState<string | null>(null);
 
   const handleChange = (field: InputField, value: string) => {
     setError(null);
@@ -48,46 +61,30 @@ export default function DashboardPage() {
           setSpendingCurrency(defaultCurrencyForDestination(value));
         }
         break;
-      case "destination":
-        setDestination(value);
-        break;
-      case "spendingCurrency":
-        setSpendingCurrency(value as CurrencyCode);
-        break;
-      case "homeCurrency":
-        setHomeCurrency(value as CurrencyCode);
-        break;
-      case "startDate":
-        setStartDate(value);
-        break;
-      case "endDate":
-        setEndDate(value);
-        break;
-      case "budget":
-        setBudget(value);
-        break;
+      case "destination": setDestination(value); break;
+      case "spendingCurrency": setSpendingCurrency(value as CurrencyCode); break;
+      case "homeCurrency": setHomeCurrency(value as CurrencyCode); break;
+      case "startDate": setStartDate(value); break;
+      case "endDate": setEndDate(value); break;
+      case "budgetMin": setBudgetMin(value); break;
+      case "budgetMax": setBudgetMax(value); break;
+      case "mood": setMood(value); break;
+      case "theme": setTheme(value); break;
+      case "companions": setCompanions(value); break;
+      case "headcount": setHeadcount(value); break;
     }
   };
 
   const handleSubmit = async () => {
     setError(null);
-    if (!destination.trim()) {
-      setError("請選擇或輸入旅遊目的地。");
-      return;
-    }
-    if (!startDate || !endDate) {
-      setError("請選擇出發與回程日期。");
-      return;
-    }
-    if (new Date(endDate) < new Date(startDate)) {
-      setError("回程日期不可早於出發日期。");
-      return;
-    }
-    const budgetNum = Number(budget);
-    if (!budgetNum || budgetNum <= 0) {
-      setError("請輸入有效的預算總額。");
-      return;
-    }
+    setSavedId(null);
+    if (!destination.trim()) return setError("請選擇或輸入旅遊目的地。");
+    if (!startDate || !endDate) return setError("請選擇出發與回程日期。");
+    if (new Date(endDate) < new Date(startDate)) return setError("回程日期不可早於出發日期。");
+    const min = Number(budgetMin);
+    const max = Number(budgetMax);
+    if (!min || min <= 0 || !max || max <= 0) return setError("請輸入有效的預算範圍。");
+    if (max < min) return setError("預算上限不可小於下限。");
 
     setLoading(true);
     try {
@@ -98,14 +95,20 @@ export default function DashboardPage() {
           destination,
           startDate,
           endDate,
-          budget: budgetNum,
           homeCurrency,
           spendingCurrency,
+          budgetMin: min,
+          budgetMax: max,
+          mood: mood || undefined,
+          theme: theme || undefined,
+          companions: companions || undefined,
+          headcount: Number(headcount) || 1,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "產生行程失敗");
       setResult(data as GenerateResponse);
+      setSelectedTier("mid");
     } catch (err: any) {
       setError(err?.message || "發生未知錯誤");
     } finally {
@@ -113,22 +116,22 @@ export default function DashboardPage() {
     }
   };
 
+  const handleSave = () => {
+    if (!result) return;
+    const trip = buildSavedTrip(result, selectedTier);
+    addTrip(trip);
+    setSavedId(trip.id);
+  };
+
+  const selectedPlan = result?.tiers.find((t) => t.tier === selectedTier) ?? result?.tiers[0];
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-      {/* Header */}
-      <header className="mb-5">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl">✈️</span>
-          <h1 className="text-xl font-extrabold tracking-tight text-slate-900">
-            SmartTrip <span className="text-brand-accent">FX</span>
-          </h1>
-        </div>
-        <p className="mt-1 text-sm text-slate-500">
-          一鍵生成行程，精算「不浪費、不匯損」的精準現金換匯量（支援多目的地與多幣別）。
-        </p>
-      </header>
+      <NavBar />
+      <p className="mb-4 -mt-2 text-sm text-slate-500">
+        想臨時逃離一下？挑個心情與預算範圍，立刻生成 Low / Mid / High 三種方案。
+      </p>
 
-      {/* 輸入列 */}
       <InputBar
         destination={destination}
         isCustomDestination={isCustomDestination}
@@ -136,7 +139,12 @@ export default function DashboardPage() {
         homeCurrency={homeCurrency}
         startDate={startDate}
         endDate={endDate}
-        budget={budget}
+        budgetMin={budgetMin}
+        budgetMax={budgetMax}
+        mood={mood}
+        theme={theme}
+        companions={companions}
+        headcount={headcount}
         loading={loading}
         onChange={handleChange}
         onSubmit={handleSubmit}
@@ -148,41 +156,70 @@ export default function DashboardPage() {
         </div>
       ) : null}
 
-      {/* 主內容區 */}
       {!result && !loading ? <EmptyState /> : null}
       {loading && !result ? <LoadingState /> : null}
 
-      {result ? (
-        <div className="mt-5 grid grid-cols-1 gap-5 lg:grid-cols-3">
-          {/* 左：行程時間軸 */}
-          <div className="lg:col-span-2">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-bold text-slate-900">
-                {result.itinerary.destination}・{result.itinerary.days.length} 天行程
-              </h2>
+      {result && selectedPlan ? (
+        <div className="mt-5 space-y-5">
+          {/* 三級距選擇 */}
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <h2 className="text-sm font-bold text-slate-900">選擇你的方案</h2>
               <span className="text-[11px] text-slate-400">
                 {result.generatedBy === "openai" ? "由 AI 生成" : "示範行程"}
               </span>
             </div>
-            <ItineraryTimeline itinerary={result.itinerary} />
+            <TierSelector
+              tiers={result.tiers}
+              selected={selectedTier}
+              homeCurrency={result.homeCurrency}
+              onSelect={(t) => {
+                setSelectedTier(t);
+                setSavedId(null);
+              }}
+            />
           </div>
 
-          {/* 右：財務面板（黏性） */}
-          <div className="lg:col-span-1">
-            <div className="lg:sticky lg:top-6">
-              <FinancialPanel
-                finance={result.finance}
-                fx={result.fx}
-                budget={result.budget}
-                homeCurrency={result.homeCurrency}
-              />
+          {/* 行程 + 財務 */}
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-bold text-slate-900">
+                  {result.destination}・{selectedPlan.itinerary.days.length} 天（{selectedPlan.label}）
+                </h2>
+                <button
+                  onClick={handleSave}
+                  className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-700"
+                >
+                  💾 儲存此行程
+                </button>
+              </div>
+              {savedId ? (
+                <div className="mb-3 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                  <span>已儲存到「我的行程」。</span>
+                  <button onClick={() => router.push("/trips")} className="font-semibold underline">
+                    前往查看 →
+                  </button>
+                </div>
+              ) : null}
+              <ItineraryTimeline itinerary={selectedPlan.itinerary} />
+            </div>
+            <div className="lg:col-span-1">
+              <div className="lg:sticky lg:top-6">
+                <FinancialPanel
+                  finance={selectedPlan.finance}
+                  fx={result.fx}
+                  budget={selectedPlan.budgetHome}
+                  homeCurrency={result.homeCurrency}
+                />
+              </div>
             </div>
           </div>
         </div>
       ) : null}
 
       <footer className="mt-10 text-center text-[11px] text-slate-400">
-        匯率與燈號僅供參考，實際換匯請以銀行牌告為準。
+        匯率與燈號僅供參考，實際換匯請以銀行牌告為準。資料僅儲存在本機瀏覽器。
       </footer>
     </div>
   );
@@ -191,12 +228,12 @@ export default function DashboardPage() {
 function EmptyState() {
   return (
     <div className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-white/60 p-10 text-center">
-      <div className="text-3xl">🗺️</div>
+      <div className="text-3xl">🏃💨</div>
       <p className="mt-2 text-sm font-medium text-slate-600">
-        選擇目的地、幣別、日期與預算，按「一鍵生成行程」開始規劃。
+        設定心情、同行、人數與預算範圍，按上方按鈕一鍵生成三種方案。
       </p>
       <p className="mt-1 text-xs text-slate-400">
-        系統會自動標註每筆花費的支付方式，並算出最精準的現金換匯量。
+        系統會標註每筆花費的支付方式，並算出最精準的現金換匯量。
       </p>
     </div>
   );
@@ -204,14 +241,21 @@ function EmptyState() {
 
 function LoadingState() {
   return (
-    <div className="mt-8 grid grid-cols-1 gap-5 lg:grid-cols-3">
-      <div className="space-y-3 lg:col-span-2">
+    <div className="mt-8 space-y-5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="h-24 animate-pulse rounded-xl bg-slate-200/70" />
+          <div key={i} className="h-36 animate-pulse rounded-2xl bg-slate-200/70" />
         ))}
       </div>
-      <div className="lg:col-span-1">
-        <div className="h-64 animate-pulse rounded-2xl bg-slate-200/70" />
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <div className="space-y-3 lg:col-span-2">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="h-24 animate-pulse rounded-xl bg-slate-200/70" />
+          ))}
+        </div>
+        <div className="lg:col-span-1">
+          <div className="h-64 animate-pulse rounded-2xl bg-slate-200/70" />
+        </div>
       </div>
     </div>
   );
