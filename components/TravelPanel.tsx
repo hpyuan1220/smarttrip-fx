@@ -2,7 +2,7 @@
 
 import type { TierKey } from "@/lib/types";
 import { formatMoney, type CurrencyCode } from "@/lib/currency";
-import { bookingLinks, estimateTravel } from "@/lib/travel";
+import { bookingLinks, dealLinks, estimateTravel } from "@/lib/travel";
 
 function Row({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -53,6 +53,9 @@ export default function TravelPanel({
     rate,
   });
   const links = bookingLinks(destination, startDate, endDate, headcount);
+  const deals = dealLinks();
+  const flightDeals = deals.filter((d) => d.group === "flight");
+  const hotelDeals = deals.filter((d) => d.group === "hotel");
 
   const activitiesHome = Math.round(activitiesTotalSpending * (rate > 0 ? rate : 1));
   const grandTotalHome = activitiesHome + est.travelTotalHome;
@@ -119,10 +122,53 @@ export default function TravelPanel({
         </div>
       </div>
 
+      {/* 撿便宜・最後一分鐘 */}
+      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+        <div className="mb-1.5 flex items-center gap-1 text-[11px] font-bold text-amber-700">
+          🔥 撿便宜・最後一分鐘
+        </div>
+        <DealGroup title="機票特價・錯誤票" deals={flightDeals} />
+        <div className="mt-2">
+          <DealGroup title="飯店最後一刻" deals={hotelDeals} />
+        </div>
+      </div>
+
       <p className="mt-2 text-[10px] leading-relaxed text-slate-400">
         機票/住宿為粗估值，僅供抓預算參考；實際價格與空房請點上方連結查詢。機票、住宿多以刷卡 / 預付，
-        不計入現金換匯量。
+        不計入現金換匯量。特價情報站為第三方網站，出發前請再次確認價格與條款。
       </p>
+    </div>
+  );
+}
+
+function DealGroup({
+  title,
+  deals,
+}: {
+  title: string;
+  deals: { label: string; emoji: string; url: string; note: string }[];
+}) {
+  return (
+    <div>
+      <div className="mb-1 text-[10px] font-medium text-amber-700/80">{title}</div>
+      <div className="grid grid-cols-2 gap-1.5">
+        {deals.map((d) => (
+          <a
+            key={d.label}
+            href={d.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-md border border-amber-200 bg-white px-2 py-1.5 text-[11px] transition hover:border-amber-400"
+            title={d.note}
+          >
+            <div className="flex items-center gap-1 font-semibold text-slate-700">
+              <span>{d.emoji}</span>
+              <span className="truncate">{d.label}</span>
+            </div>
+            <div className="truncate text-[10px] text-slate-400">{d.note}</div>
+          </a>
+        ))}
+      </div>
     </div>
   );
 }

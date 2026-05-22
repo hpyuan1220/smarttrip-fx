@@ -149,3 +149,28 @@ export function bookingLinks(
     },
   ];
 }
+
+// --- 撿便宜・最後一分鐘（特價 / 錯誤票 / 剩房 情報站，與目的地無關的精選清單） ---
+
+export interface DealLink {
+  label: string;
+  emoji: string;
+  url: string;
+  group: "flight" | "hotel";
+  note: string;
+}
+
+export function dealLinks(): DealLink[] {
+  return [
+    // 機票特價 / 錯誤票
+    { group: "flight", emoji: "💥", label: "Secret Flying", note: "錯誤票・誤刊價", url: "https://www.secretflying.com/" },
+    { group: "flight", emoji: "🔔", label: "Going", note: "特價/錯誤票警報", url: "https://www.going.com/" },
+    { group: "flight", emoji: "🇹🇼", label: "FunTime 廉航比價", note: "台灣廉航促銷", url: "https://www.funtime.com.tw/airline/" },
+    { group: "flight", emoji: "📝", label: "吃貨瑪莉 機票情報", note: "廉航促銷整理", url: "https://eatmary.net/2848" },
+    // 飯店最後一刻
+    { group: "hotel", emoji: "🌙", label: "HotelTonight", note: "今晚最後一刻", url: "https://www.hoteltonight.com/" },
+    { group: "hotel", emoji: "⏰", label: "lastminute.com", note: "最後一刻飯店", url: "https://www.lastminute.com/hotels" },
+    { group: "hotel", emoji: "🏷️", label: "Agoda 限時優惠", note: "亞洲特價/剩房", url: "https://www.agoda.com/deals" },
+    { group: "hotel", emoji: "🛏️", label: "LateRooms", note: "剩房特價", url: "https://www.laterooms.com/" },
+  ];
+}
