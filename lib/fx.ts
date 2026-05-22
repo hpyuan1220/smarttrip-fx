@@ -141,19 +141,87 @@ async function fetchLiveHistory(
   }
 }
 
+// --- 真實資料（免金鑰：fawazahmed0 currency-api，支援 TWD 等多數幣別、含每日歷史） ---
+
+async function fetchRateForDate(date: string, base: string, quote: string): Promise<number | null> {
+  const urls = [
+    `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@${date}/v1/currencies/${base}.json`,
+    `https://${date}.currency-api.pages.dev/v1/currencies/${base}.json`,
+  ];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(4500),
+        next: { revalidate: 3600 },
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const r = data?.[base]?.[quote];
+      if (Number.isFinite(r) && r > 0) return Number(r);
+    } catch {
+      /* try next host */
+    }
+  }
+  return null;
+}
+
+async function fetchKeylessHistory(
+  spending: CurrencyCode,
+  home: CurrencyCode
+): Promise<FxHistoryPoint[] | null> {
+  const base = spending.toLowerCase();
+  const quote = home.toLowerCase();
+  const today = new Date();
+
+  // 取樣：近 28 天每 2 天一點（約 15 點）估算 MA；另抓 latest 當今日值
+  const targets: string[] = [];
+  for (let i = 28; i >= 0; i -= 2) {
+    const d = new Date(today);
+    d.setUTCDate(today.getUTCDate() - i);
+    targets.push(isoDate(d));
+  }
+
+  const sampled = await Promise.all(
+    targets.map(async (ds) => {
+      const r = await fetchRateForDate(ds, base, quote);
+      return r != null ? { date: ds, rate: r } : null;
+    })
+  );
+  const latest = await fetchRateForDate("latest", base, quote);
+
+  const byDate = new Map<string, number>();
+  for (const p of sampled) if (p) byDate.set(p.date, p.rate);
+  if (latest != null) byDate.set(isoDate(today), latest);
+
+  const points: FxHistoryPoint[] = [...byDate.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, rate]) => ({ date, rate: Number(rate.toFixed(8)) }));
+
+  return points.length >= 5 ? points : null;
+}
+
 /** 取得匯率分析：今日匯率、MA30、偏離百分比、燈號與文字建議。 */
 export async function getFxAnalysis(
   spendingCurrency: CurrencyCode,
   homeCurrency: CurrencyCode
 ): Promise<FxAnalysis> {
-  const apiKey = process.env.EXCHANGE_API_KEY;
   let history: FxHistoryPoint[] | null = null;
   let source: "live" | "simulated" = "simulated";
 
-  if (apiKey && spendingCurrency !== homeCurrency) {
-    history = await fetchLiveHistory(apiKey, spendingCurrency, homeCurrency);
+  if (spendingCurrency !== homeCurrency) {
+    // 1) 免金鑰即時匯率（主要來源）
+    history = await fetchKeylessHistory(spendingCurrency, homeCurrency);
     if (history) source = "live";
+
+    // 2) 備援：若有設定 EXCHANGE_API_KEY
+    const apiKey = process.env.EXCHANGE_API_KEY;
+    if (!history && apiKey) {
+      history = await fetchLiveHistory(apiKey, spendingCurrency, homeCurrency);
+      if (history) source = "live";
+    }
   }
+
+  // 3) 最後退回模擬（會在 UI 標示為「模擬資料」）
   if (!history) history = simulateHistory(spendingCurrency, homeCurrency);
 
   const rates = history.map((h) => h.rate);
